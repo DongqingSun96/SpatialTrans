@@ -1,0 +1,54 @@
+"""
+A spatial transcriptomic analysis pipeline.
+"""
+
+configfile: "config.yaml"
+
+import yaml
+import sys
+import os
+
+rule all:
+    input:
+        spatialobject = "Result/Seurat/%s_Spatial_Object.rds" %(config["outprefix"])
+
+rule spatial_map:
+    input:
+        mapindex = config["genome"]["mapindex"],
+        fastqs = config["fastqdir"],
+        image = config["image"]
+    output:
+        countmtx = "Result/Spaceranger/%s/outs/filtered_feature_bc_matrix.h5" %(config["outprefix"]),
+    params:
+        outprefix = config["outprefix"],
+        fastqprefix = config["fastqprefix"],
+        silde = config["slide"],
+        area = config["area"],
+        outdir = "Result/Spaceranger/"
+    benchmark:
+        "Result/Benchmark/%s_Spaceranger.benchmark" %(config["outprefix"])
+    threads:
+        config["cores"]
+    shell:
+        "spaceranger count --id={params.outprefix} --fastqs={input.fastqs} --sample={params.fastqprefix} "
+        "--image={input.image} --transcriptome={input.mapindex} "
+        "--slide={params.silde} --area={params.area} --localcores {threads};"
+        "rsync -a {params.outprefix} {params.outdir};"
+        "rm -r {params.outprefix}"
+
+rule spatial_analysis:
+    input:
+        countmtx = "Result/Spaceranger/%s/outs/filtered_feature_bc_matrix.h5" %(config["outprefix"])
+    output:
+        spatialobject = "Result/Seurat/%s_Spatial_Object.rds" %(config["outprefix"])
+    params:
+        datadir = "Result/Spaceranger/%s/outs" %(config["outprefix"]),
+        outprefix = config["outprefix"],
+        outdir = "Result/Seurat",
+        signature = config["signature"]
+    benchmark:
+        "Result/Benchmark/%s_spatial_analysis.benchmark" %(config["outprefix"])
+    threads:
+        config["cores"]
+    shell:
+        "Rscript Spatial_analysis.R --data {params.datadir} --prefix {params.outprefix} --outdir {params.outdir} --signature {params.signature}"
